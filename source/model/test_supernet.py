@@ -1,7 +1,7 @@
 import pytest
 import torch
 import itertools
-from .supernet import SupernetLayer, SupernetClassifier
+from .supernet import SupernetLayer, SupernetClassifier, SupernetClassifierSpec
 
 
 def test_supernet_layer_forward():
@@ -88,7 +88,7 @@ def test_supernet_model_forward():
     test_data = torch.rand(4, 1, 32, 32)
     results = {}
 
-    for configuration in itertools.combinations(['conv3x3', 'conv5x5'], 2):
+    for configuration in model.get_available_configurations():
         model.reconfigure(configuration)
         results[tuple(configuration)] = model(test_data)
 
@@ -113,7 +113,7 @@ def test_supernet_model_distill():
         })
     ])
 
-    for configuration in itertools.combinations(['conv3x3', 'conv5x5'], 2):
+    for configuration in model.get_available_configurations():
         model.reconfigure(configuration)
         distilled_model = model.distill()
 
@@ -121,3 +121,45 @@ def test_supernet_model_distill():
         full_model_output = model(test_data)
         distilled_model_output = distilled_model(test_data)
         assert torch.allclose(full_model_output, distilled_model_output)
+
+def test_supernet_from_spec():
+
+    test_config = {
+        'input_size': [28, 28],
+        'num_input_channels': 3,
+        'num_output_layer_channels': 8,
+        'num_classes': 2,
+        'supernet_layers': [
+            {
+                'out_channels': 4,
+                'blocks': {
+                    'conv3x3': {'kind': 'conv2d', 'kernel_size': 3},
+                    'conv5x5': {'kind': 'conv2d', 'kernel_size': 5},
+                }
+            },
+            {
+                'out_channels': 8,
+                'blocks': {
+                    'conv3x3': {'kind': 'conv2d', 'kernel_size': 3},
+                    'conv5x5': {'kind': 'conv2d', 'kernel_size': 5},
+                }
+            }
+        ]
+    }
+
+    test_spec = SupernetClassifierSpec.from_dict(test_config)
+    expected_configurations = {
+        ('conv3x3', 'conv3x3'),
+        ('conv3x3', 'conv5x5'),
+        ('conv5x5', 'conv3x3'),
+        ('conv5x5', 'conv5x5')
+    }
+
+    model = SupernetClassifier.from_spec(test_spec)
+    available_configurations = set(model.get_available_configurations())
+
+    assert isinstance(model, SupernetClassifier)
+    assert available_configurations == expected_configurations
+
+
+def test

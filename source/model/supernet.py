@@ -10,45 +10,49 @@ from typing import Iterable, List, Dict, Tuple, Set, Optional
 class SupernetBlockSpec:
     """Supernet block specification
     """
-    name: str
     kind: str
     params: dict
 
     @classmethod
-    def from_dict(spec: Dict) -> 'SupernetBlockSpec':
-        return SupernetBlockSpec(**spec)
+    def from_dict(cls, spec: Dict) -> 'SupernetBlockSpec':
+        params = {k: v for k, v in spec.items() if k != 'kind'}
+        return cls(kind=spec['kind'], params=params)
 
 @dataclass
 class SupernetLayerSpec:
     """Supernet layer specification
     """
+    out_channels: int
     blocks: List[SupernetBlockSpec]
 
     @classmethod
-    def from_dict(spec: Dict) -> 'SupernetLayerSpec':
-        layer_params = {k: v for k, v in spec.items() if k != 'blocks'}
-        return SupernetLayerSpec(
-            blocks=[SupernetBlockSpec.from_dict({**layer_params, **params}) for params in spec['blocks']]
+    def from_dict(cls, spec: Dict) -> 'SupernetLayerSpec':
+        return cls(
+            out_channels=spec['out_channels'],
+            blocks={
+                name: SupernetBlockSpec.from_dict(params) 
+                for name, params in spec['blocks'].items()
+            }
         )
 
 @dataclass
 class SupernetClassifierSpec:
     """Supernet model config
     """
-    input_shape: Tuple[int, int]
-    input_channels: int
-    output_layer_channels: int
+    input_size: Tuple[int, int]
+    num_input_channels: int
+    num_output_layer_channels: int
     num_classes: int
-    supernet_layers_spec: List[SupernetLayerSpec]\
+    supernet_layers: List[SupernetLayerSpec]
 
     @classmethod
-    def from_dict(spec: Dict) -> 'SupernetClassifierSpec':
-        return SupernetClassifierSpec(
-            input_shape=spec['input_shape'],
-            input_channels=spec['input_channels'],
-            output_layer_channels=spec['output_layer_channels'],
+    def from_dict(cls, spec: Dict) -> 'SupernetClassifierSpec':
+        return cls(
+            input_size=spec['input_size'],
+            num_input_channels=spec['num_input_channels'],
+            num_output_layer_channels=spec['num_output_layer_channels'],
             num_classes=spec['num_classes'],
-            supernet_layers_spec=[SupernetLayerSpec.from_dict(x) for x in spec['supernet_layers_spec']]
+            supernet_layers=[SupernetLayerSpec.from_dict(x) for x in spec['supernet_layers']]
         )
 
 
@@ -126,6 +130,15 @@ class SupernetLayer(torch.nn.Module):
         self._pooling = pooling
 
         self.select_block(default_block)
+
+    @classmethod
+    def from_spec(cls, spec: SupernetLayerSpec, in_channels: int) -> 'SupernetLayer':
+        return cls(
+            blocks={
+                name: build_block(block_spec, in_channels, spec.out_channels)
+                for name, block_spec in spec.blocks.items()
+            }
+        )
 
     @property
     def available_blocks(self) -> Set[str]:
@@ -212,6 +225,37 @@ class SupernetClassifier(torch.nn.Module):
             torch.nn.Linear(in_features=num_output_layer_channels, out_features=num_classes),
             torch.nn.Softmax()
         )
+
+    @classmethod
+    def from_spec(cls, spec: SupernetClassifierSpec) -> 'SupernetClassifier':
+
+        supernet_layers = []
+        in_channels = spec.num_input_channels
+
+        for layer_spec in spec.supernet_layers:
+            layer = SupernetLayer.from_spec(layer_spec, in_channels)
+            in_channels = layer_spec.out_channels
+            supernet_layers.append(layer)
+
+        return cls(
+            input_size=spec.input_size,
+            num_input_channels=spec.num_input_channels,
+            num_output_layer_channels=spec.num_output_layer_channels,
+            num_classes=spec.num_classes,
+            supernet_layers=supernet_layers
+        )
+
+    def get_available_configurations(self) -> Iterable[Tuple]:
+
+        available_blocks = [
+            layer.available_blocks
+            for layer in self._supernet_layers
+        ]
+
+        available_configurations = itertools.product(*available_blocks)
+
+        for configuration in available_configurations:
+            yield tuple(configuration)
 
     def reconfigure(self, block_names: Iterable[str]):
 
