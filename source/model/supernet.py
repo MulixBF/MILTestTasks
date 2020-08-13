@@ -223,7 +223,7 @@ class SupernetClassifier(torch.nn.Module):
             torch.nn.Linear(in_features=self._embedding_size, out_features=num_output_layer_channels),
             torch.nn.ReLU(),
             torch.nn.Linear(in_features=num_output_layer_channels, out_features=num_classes),
-            torch.nn.Softmax()
+            torch.nn.Softmax(dim=-1)
         )
 
     @classmethod
