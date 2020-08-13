@@ -143,8 +143,8 @@ def train(experiment_name: str = 'baseline',
           output_dir: str = '../results',
           report_fields: List[str] = ('experiment', 'epoch', 'configuration', 'val_accuracy', 'train_accuracy'),
           model_configuration: Optional[str] = None,
-          seed: Optional[int] = None,
-          num_epochs: int = 100,
+          seed: int = 0,
+          num_epochs: int = 1000,
           logging_level: str = 'INFO'):
     """Train Supernet model
 
