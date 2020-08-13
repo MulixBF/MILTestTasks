@@ -103,11 +103,11 @@ def create_trainer(
                     engine.state.epoch,
                     ','.join(configuration),
                     '\n\t'.join([
-                        f'{name}:\t\t{value}'
+                        f'val_{name}:\t\t{value}'
                         for name, value in val_metrics.items()
                     ]),
                     '\n\t'.join([
-                        f'{name}:\t\t{value}'
+                        f'train_{name}:\t\t{value}'
                         for name, value in train_metrics.items()
                     ])
                 )
