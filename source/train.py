@@ -5,8 +5,9 @@ import yaml
 import torch
 import csv
 import random
+import logging
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from torchvision.datasets.mnist import MNIST
 from torchvision.transforms import Compose, ToTensor, Normalize
 from torch.utils.data import DataLoader
@@ -47,7 +48,8 @@ def create_dataloader(batch_size: int, train: bool) -> DataLoader:
 
 def create_trainer(
     model,
-    model_configuration,
+    available_model_configurations,
+    seed,
     train_dl,
     val_dl,
     device,
@@ -70,10 +72,6 @@ def create_trainer(
         device=device
     )
 
-    available_model_configurations = {tuple(model_configuration)} \
-        if model_configuration is not None \
-        else model.get_available_configurations()
-
     pbar = ProgressBar(persist=True)
     pbar.attach(trainer, metric_names='all')
 
@@ -91,32 +89,40 @@ def create_trainer(
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
 
+        pbar.n = pbar.last_print_n = 0
+
         evaluator.run(train_dl)
         train_metrics = evaluator.state.metrics
+        pbar.log_message(
+            'Train Results - Epoch: {}\n\t{}'.format(
+                engine.state.epoch,
+                '\n\t'.join([
+                    f'train_{name}:\t\t{value}'
+                    for name, value in train_metrics.items()
+                ])
+            )
+        )
 
         evaluator.run(val_dl)
         val_metrics = evaluator.state.metrics
+        pbar.log_message(
+            'Validation Results - Epoch: {}\n\t{}'.format(
+                engine.state.epoch,
+                '\n\t'.join([
+                    f'val_{name}:\t\t{value}'
+                    for name, value in val_metrics.items()
+                ])
+            )
+        )
 
         with open(report_filename, 'a') as report_file:
             writer = csv.DictWriter(report_file, fieldnames=report_fields)
             writer.writerow({
                 'experiment': experiment_name,
                 'epoch': engine.state.epoch,
-                'seed': engine.state.seed,
                 'val_accuracy': val_metrics['accuracy'],
                 'train_accuracy': train_metrics['accuracy']
             })
-
-        pbar.n = pbar.last_print_n = 0
-        pbar.log_message(
-            'Validation Results - Epoch: {}\n\t{}'.format(
-                engine.state.epoch,
-                '\n\t'.join([
-                    f'{name}:\t\t{value}'
-                    for name, value in val_metrics.items()
-                ])
-            )
-        )
 
     def get_accuracy(engine):
         return engine.state.metrics['accuracy']
@@ -145,7 +151,12 @@ def create_trainer(
 def train(experiment_name: str = 'baseline',
           config_path: str = '../config.yml',
           output_dir: str = '../results',
-          report_fields: List[str] = ('experiment', 'epoch', 'seed', 'val_accuracy', 'train_accuracy')):
+          report_fields: List[str] = ('experiment', 'epoch', 'val_accuracy', 'train_accuracy'),
+          model_configuration: Optional[Tuple[str]] = None,
+          seed: Optional[int] = 42,
+          logging_level: str = 'INFO'):
+
+    logging.basicConfig(level=logging_level)
 
     with open(config_path) as config_file:
         config = yaml.load(config_file, yaml.SafeLoader)
@@ -153,17 +164,25 @@ def train(experiment_name: str = 'baseline',
     os.makedirs(output_dir, exist_ok=True)
     shutil.copy(config_path, os.path.join(output_dir, f'config_{experiment_name}.yml'))
 
-    torch.manual_seed(config['seed'])
+    logging.info(f'Setting seed: {seed}')
+    torch.manual_seed(seed)
 
     train_dataloader = create_dataloader(batch_size=config['batch_size'], train=True)
     val_dataloader = create_dataloader(batch_size=config['batch_size'], train=False)
 
     device = torch.device(config['device'])
     model = create_model(config['model_spec'], device=device)
+    logging.info('Model loaded:\n%s', model)
+
+    available_model_configurations = set(model.get_available_configurations())\
+        if model_configuration is None \
+        else {model_configuration}
+    logging.info('Using model configurations:\n%s', available_model_configurations)
 
     trainer = create_trainer(
         model,
-        model_configuration=config['model_configuration'],
+        available_model_configurations=available_model_configurations,
+        seed=seed,
         train_dl=train_dataloader,
         val_dl=val_dataloader,
         device=device,
