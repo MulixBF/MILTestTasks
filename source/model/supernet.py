@@ -30,7 +30,7 @@ class SupernetLayerSpec:
         return cls(
             out_channels=spec['out_channels'],
             blocks={
-                name: SupernetBlockSpec.from_dict(params) 
+                name: SupernetBlockSpec.from_dict(params)
                 for name, params in spec['blocks'].items()
             }
         )
@@ -71,14 +71,14 @@ def build_block(block_spec: SupernetBlockSpec, in_channels: int, out_channels: i
     """
 
     if block_spec.kind == 'conv2d':
-        return torch.nn.Conv2d(in_channels=in_channels, 
-                               out_channels=out_channels, 
+        return torch.nn.Conv2d(in_channels=in_channels,
+                               out_channels=out_channels,
                                **block_spec.params)
 
     if block_spec.kind == 'identity':
         return torch.nn.Identity()
-    
-    raise ValueError(f'Unknown block kind: {block_spec.kind}') 
+
+    raise ValueError(f'Unknown block kind: {block_spec.kind}')
 
 
 class PadToWidth(torch.nn.Module):
@@ -87,11 +87,11 @@ class PadToWidth(torch.nn.Module):
         super(PadToWidth, self).__init__()
         self._embedding_size = embedding_size
         self._fill_value = fill_value
-    
+
     def forward(self, x):
         input_size = x.size()
         target_size = torch.Size((*input_size[:-1], self._embedding_size))
-        result = torch.full(target_size, dtype=x.dtype, fill_value=self._fill_value)
+        result = torch.full(target_size, dtype=x.dtype, fill_value=self._fill_value).to(x.device)
         result[..., :input_size[-1]] = x
         return result
 
@@ -109,7 +109,7 @@ class SupernetLayer(torch.nn.Module):
            Active block can be selected by calling .select_block
 
         Args:
-            blocks (Dict[str, torch.nn.Module]): inner blocks. 
+            blocks (Dict[str, torch.nn.Module]): inner blocks.
                                                  Only one is active at any time, although this behaiviour could be changed by paddnig and summing the outputs
             activation (torch.nn.Module, optional): Activation function. Defaults to torch.nn.ReLU.
             pooling (torch.nn.Module, optional): Pooling operation. Defaults to torch.nn.MaxPool2d with 2x2 kernel
@@ -124,7 +124,7 @@ class SupernetLayer(torch.nn.Module):
 
         super(SupernetLayer, self).__init__()
 
-        self._blocks = torch.nn.ModuleDict(blocks) 
+        self._blocks = torch.nn.ModuleDict(blocks)
         self._active_block = None
         self._activation = activation
         self._pooling = pooling
@@ -175,7 +175,7 @@ class SupernetLayer(torch.nn.Module):
         )
 
     def forward(self, x: torch.Tensor, with_block: Optional[str] = None) -> torch.Tensor:
-        
+
         if self._active_block is None and with_block is None:
             raise ValueError("One of the block should be selected as active")
 
@@ -189,9 +189,9 @@ class SupernetLayer(torch.nn.Module):
 
 class SupernetClassifier(torch.nn.Module):
 
-    def __init__(self, 
+    def __init__(self,
                  input_size: Tuple[int, int],
-                 num_input_channels: int, 
+                 num_input_channels: int,
                  num_output_layer_channels: int,
                  num_classes: int,
                  supernet_layers: List[SupernetLayer]):
@@ -213,7 +213,7 @@ class SupernetClassifier(torch.nn.Module):
                 set(layer.get_output_sizes(s).values())
                 for s in possible_output_sizes
             ))
-      
+
         self._input_size = input_size
         self._supernet_layers = torch.nn.ModuleList(supernet_layers)
         self._embedding_size = max(s.numel() for s in possible_output_sizes)

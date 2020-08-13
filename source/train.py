@@ -49,7 +49,6 @@ def create_dataloader(batch_size: int, train: bool) -> DataLoader:
 def create_trainer(
     model,
     available_model_configurations,
-    seed,
     train_dl,
     val_dl,
     device,
@@ -91,38 +90,39 @@ def create_trainer(
 
         pbar.n = pbar.last_print_n = 0
 
-        evaluator.run(train_dl)
-        train_metrics = evaluator.state.metrics
-        pbar.log_message(
-            'Train Results - Epoch: {}\n\t{}'.format(
-                engine.state.epoch,
-                '\n\t'.join([
-                    f'train_{name}:\t\t{value}'
-                    for name, value in train_metrics.items()
-                ])
-            )
-        )
+        for configuration in available_model_configurations:
 
-        evaluator.run(val_dl)
-        val_metrics = evaluator.state.metrics
-        pbar.log_message(
-            'Validation Results - Epoch: {}\n\t{}'.format(
-                engine.state.epoch,
-                '\n\t'.join([
-                    f'val_{name}:\t\t{value}'
-                    for name, value in val_metrics.items()
-                ])
-            )
-        )
+            model.reconfigure(configuration)
+            evaluator.run(train_dl)
+            train_metrics = dict(evaluator.state.metrics)
 
-        with open(report_filename, 'a') as report_file:
-            writer = csv.DictWriter(report_file, fieldnames=report_fields)
-            writer.writerow({
-                'experiment': experiment_name,
-                'epoch': engine.state.epoch,
-                'val_accuracy': val_metrics['accuracy'],
-                'train_accuracy': train_metrics['accuracy']
-            })
+            evaluator.run(val_dl)
+            val_metrics = dict(evaluator.state.metrics)
+
+            pbar.log_message(
+                'Epoch: {} Configuration: {}\n\t{}\n\t{}'.format(
+                    engine.state.epoch,
+                    ','.join(configuration),
+                    '\n\t'.join([
+                        f'train_{name}:\t\t{value}'
+                        for name, value in train_metrics.items()
+                    ]),
+                    '\n\t'.join([
+                        f'val_{name}:\t\t{value}'
+                        for name, value in val_metrics.items()
+                    ])
+                )
+            )
+
+            with open(report_filename, 'a') as report_file:
+                writer = csv.DictWriter(report_file, fieldnames=report_fields)
+                writer.writerow({
+                    'experiment': experiment_name,
+                    'configuration': ','.join(configuration),
+                    'epoch': engine.state.epoch,
+                    'val_accuracy': val_metrics['accuracy'],
+                    'train_accuracy': train_metrics['accuracy']
+                })
 
     def get_accuracy(engine):
         return engine.state.metrics['accuracy']
@@ -151,18 +151,18 @@ def create_trainer(
 def train(experiment_name: str = 'baseline',
           config_path: str = '../config.yml',
           output_dir: str = '../results',
-          report_fields: List[str] = ('experiment', 'epoch', 'val_accuracy', 'train_accuracy'),
-          model_configuration: Optional[Tuple[str]] = None,
+          report_fields: List[str] = ('experiment', 'epoch', 'configuration', 'val_accuracy', 'train_accuracy'),
+          model_configuration: Optional[str] = None,
           seed: Optional[int] = 42,
           logging_level: str = 'INFO'):
 
     logging.basicConfig(level=logging_level)
+    logging.info(f'Running experiment: {experiment_name}')
 
     with open(config_path) as config_file:
         config = yaml.load(config_file, yaml.SafeLoader)
 
     os.makedirs(output_dir, exist_ok=True)
-    shutil.copy(config_path, os.path.join(output_dir, f'config_{experiment_name}.yml'))
 
     logging.info(f'Setting seed: {seed}')
     torch.manual_seed(seed)
@@ -174,6 +174,9 @@ def train(experiment_name: str = 'baseline',
     model = create_model(config['model_spec'], device=device)
     logging.info('Model loaded:\n%s', model)
 
+    if model_configuration is not None and not isinstance(model_configuration, tuple):
+        raise ValueError('Model configuration should be passed as a comma-separated value')
+
     available_model_configurations = set(model.get_available_configurations())\
         if model_configuration is None \
         else {model_configuration}
@@ -182,7 +185,6 @@ def train(experiment_name: str = 'baseline',
     trainer = create_trainer(
         model,
         available_model_configurations=available_model_configurations,
-        seed=seed,
         train_dl=train_dataloader,
         val_dl=val_dataloader,
         device=device,
@@ -192,7 +194,7 @@ def train(experiment_name: str = 'baseline',
         experiment_name=experiment_name,
         report_fields=report_fields
     )
-    trainer.run(train_dataloader, max_epochs=config['num_epoch'])
+    trainer.run(train_dataloader, max_epochs=1000, seed=seed)
 
 
 if __name__ == '__main__':
