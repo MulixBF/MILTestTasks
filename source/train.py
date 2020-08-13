@@ -16,7 +16,7 @@ from model.supernet import SupernetClassifier, SupernetClassifierSpec
 from ignite.contrib.handlers import ProgressBar
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
 from ignite.handlers import EarlyStopping, ModelCheckpoint
-from ignite.metrics import Accuracy, Loss
+from ignite.metrics import Accuracy, Loss, RunningAverage
 
 
 def create_model(model_spec_dict: Dict, device: torch.device) -> SupernetClassifier:
@@ -53,7 +53,6 @@ def create_trainer(
     val_dl,
     device,
     lr,
-    early_stopping_patience,
     output_dir,
     experiment_name,
     report_fields
@@ -79,7 +78,7 @@ def create_trainer(
         configuration = random.sample(available_model_configurations, 1)[0]
         model.reconfigure(configuration)
 
-    report_filename = os.path.join(output_dir, 'report.csv')
+    report_filename = os.path.join(output_dir, f'report_{experiment_name}.csv')
     if not os.path.exists(report_filename):
         with open(report_filename, 'w') as report_file:
             writer = csv.DictWriter(report_file, fieldnames=report_fields)
@@ -93,23 +92,23 @@ def create_trainer(
         for configuration in available_model_configurations:
 
             model.reconfigure(configuration)
-            evaluator.run(train_dl)
-            train_metrics = dict(evaluator.state.metrics)
-
             evaluator.run(val_dl)
             val_metrics = dict(evaluator.state.metrics)
+
+            evaluator.run(train_dl)
+            train_metrics = dict(evaluator.state.metrics)
 
             pbar.log_message(
                 'Epoch: {} Configuration: {}\n\t{}\n\t{}'.format(
                     engine.state.epoch,
                     ','.join(configuration),
                     '\n\t'.join([
-                        f'train_{name}:\t\t{value}'
-                        for name, value in train_metrics.items()
+                        f'{name}:\t\t{value}'
+                        for name, value in val_metrics.items()
                     ]),
                     '\n\t'.join([
-                        f'val_{name}:\t\t{value}'
-                        for name, value in val_metrics.items()
+                        f'{name}:\t\t{value}'
+                        for name, value in train_metrics.items()
                     ])
                 )
             )
@@ -128,22 +127,13 @@ def create_trainer(
         return engine.state.metrics['accuracy']
 
     checkpoint_handler = ModelCheckpoint(
-        dirname=output_dir,
+        dirname=os.path.join(output_dir, f'checkpoints_{experiment_name}'),
         filename_prefix=experiment_name,
-        n_saved=1,
-        score_function=get_accuracy,
+        n_saved=None,
         require_empty=False
     )
 
     evaluator.add_event_handler(Events.COMPLETED, checkpoint_handler, {'model': model})
-
-    early_stopping_handler = EarlyStopping(
-        patience=early_stopping_patience,
-        score_function=get_accuracy,
-        trainer=trainer
-    )
-
-    evaluator.add_event_handler(Events.COMPLETED, early_stopping_handler)
 
     return trainer
 
@@ -153,7 +143,8 @@ def train(experiment_name: str = 'baseline',
           output_dir: str = '../results',
           report_fields: List[str] = ('experiment', 'epoch', 'configuration', 'val_accuracy', 'train_accuracy'),
           model_configuration: Optional[str] = None,
-          seed: Optional[int] = 42,
+          seed: Optional[int] = None,
+          num_epochs: int = 100,
           logging_level: str = 'INFO'):
 
     logging.basicConfig(level=logging_level)
@@ -189,12 +180,11 @@ def train(experiment_name: str = 'baseline',
         val_dl=val_dataloader,
         device=device,
         lr=config['lr'],
-        early_stopping_patience=config['early_stopping_patience'],
         output_dir=output_dir,
         experiment_name=experiment_name,
         report_fields=report_fields
     )
-    trainer.run(train_dataloader, max_epochs=1000, seed=seed)
+    trainer.run(train_dataloader, max_epochs=num_epochs, seed=seed)
 
 
 if __name__ == '__main__':

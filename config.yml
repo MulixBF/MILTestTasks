@@ -1,17 +1,16 @@
 device: 'cuda:0'
-lr: 0.01
-batch_size: 2048
-early_stopping_patience: 10
+lr: 0.0001
+batch_size: 4096
 
 model_spec:
 
   input_size: [28, 28]
   num_input_channels: 1
-  num_output_layer_channels: 128
+  num_output_layer_channels: 256
   num_classes: 10
 
   supernet_layers:
-  - out_channels: 16
+  - out_channels: 32
     blocks:
       conv3x3:
         kind: conv2d
