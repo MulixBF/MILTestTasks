@@ -82,7 +82,7 @@ def create_trainer(
         configuration = random.sample(available_model_configurations, 1)[0]
         model.reconfigure(configuration)
 
-    report_filename = os.path.join(output_dir, 'train.csv')
+    report_filename = os.path.join(output_dir, 'report.csv')
     if not os.path.exists(report_filename):
         with open(report_filename, 'w') as report_file:
             writer = csv.DictWriter(report_file, fieldnames=report_fields)
