@@ -146,6 +146,20 @@ def train(experiment_name: str = 'baseline',
           seed: Optional[int] = None,
           num_epochs: int = 100,
           logging_level: str = 'INFO'):
+    """Train Supernet model
+
+    Args:
+        experiment_name (str, optional): Experiment name. Defaults to 'baseline'.
+        config_path (str, optional): Path to a config file. Defaults to '../config.yml'.
+        output_dir (str, optional): Output dir. Subdirectory with checkpoints would be created for each experiment. Defaults to '../results'.
+        report_fields (List[str], optional): Which fields should be included in csv report and their order. By default all of them are
+        model_configuration (Optional[str], optional): Supernet layers configuration.
+            If not specified or None - random path would be selected for each batch with equal probability
+        seed (Optional[int], optional): Random seed for reproducibility. Defaults to None.
+        num_epochs (int, optional): Number of epochs to run the model. Defaults to 100.
+        logging_level (str, optional): Logging level. Defaults to 'INFO'.
+
+    """
 
     logging.basicConfig(level=logging_level)
     logging.info(f'Running experiment: {experiment_name}')

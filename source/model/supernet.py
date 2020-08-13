@@ -228,6 +228,8 @@ class SupernetClassifier(torch.nn.Module):
 
     @classmethod
     def from_spec(cls, spec: SupernetClassifierSpec) -> 'SupernetClassifier':
+        """Load model from specification
+        """
 
         supernet_layers = []
         in_channels = spec.num_input_channels
@@ -246,6 +248,11 @@ class SupernetClassifier(torch.nn.Module):
         )
 
     def get_available_configurations(self) -> Iterable[Tuple]:
+        """List all available supernet configurations
+
+        Returns:
+            Iterable[Tuple]: generator that returns tuples of layer block names
+        """
 
         available_blocks = [
             layer.available_blocks
@@ -258,6 +265,11 @@ class SupernetClassifier(torch.nn.Module):
             yield tuple(configuration)
 
     def reconfigure(self, block_names: Iterable[str]):
+        """Reconfigure supernet layers according to path
+
+        Args:
+            block_names (Iterable[str]): iterable with names of the blocks that should be active for each supernet layer
+        """
 
         if len(block_names) != len(self._supernet_layers):
             raise ValueError(f'Model contains {len(self._supernet_layers)} supernet layers, but passed {len(block_names)} block names')
@@ -271,6 +283,8 @@ class SupernetClassifier(torch.nn.Module):
             layer.select_block(name)
 
     def distill(self):
+        """Extract active submodule as torch.nn.Sequential model
+        """
 
         supernet_layers = [layer.distill() for layer in self._supernet_layers]
         return torch.nn.Sequential(
